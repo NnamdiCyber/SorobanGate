@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
         "Configuration loaded"
     );
 
-    tracing::info!("SorobanGate stopped");
+    server::serve(config).await?;
 
     Ok(())
 }
