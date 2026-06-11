@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
         "Configuration loaded"
     );
 
-    server::serve(config).await?;
+    server::serve(config, cli.skip_initial_health_check).await?;
 
     Ok(())
 }

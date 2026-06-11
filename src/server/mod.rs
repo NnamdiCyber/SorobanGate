@@ -16,18 +16,30 @@ use serde_json::json;
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
+use crate::pool;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
     pub start_time: Instant,
+    pub pools: Vec<Arc<pool::UpstreamPool>>,
 }
 
-pub async fn serve(config: Config) -> anyhow::Result<()> {
+pub async fn serve(config: Config, skip_initial_health_check: bool) -> anyhow::Result<()> {
+    let pools: Vec<Arc<pool::UpstreamPool>> = pool::create_pools(&config);
+
     let state = AppState {
         config: Arc::new(config),
         start_time: Instant::now(),
+        pools: pools.clone(),
     };
+
+    // Spawn health check task
+    let health_pools = pools.clone();
+    let health_config = state.config.clone();
+    tokio::spawn(async move {
+        pool::health::run_health_checks(health_pools, health_config, skip_initial_health_check).await;
+    });
 
     let app = Router::new()
         .route("/health", get(health_handler))
@@ -49,6 +61,7 @@ pub async fn serve(config: Config) -> anyhow::Result<()> {
     tracing::info!(
         http = %state.config.server.bind,
         admin = %state.config.server.admin_bind,
+        pools = pools.len(),
         "Server listening"
     );
 
@@ -115,11 +128,34 @@ async fn health_handler(
     State(state): State<AppState>,
 ) -> Json<serde_json::Value> {
     let uptime = state.start_time.elapsed().as_secs();
+
+    let pools_status: Vec<serde_json::Value> = state.pools.iter().map(|pool| {
+        let total = pool.upstreams.len();
+        let healthy = pool.healthy_upstreams().len();
+        json!({
+            "name": pool.name,
+            "total_upstreams": total,
+            "healthy_upstreams": healthy,
+            "algorithm": format!("{:?}", pool.algorithm),
+            "upstreams": pool.upstreams.iter().map(|u| {
+                let state = u.mutable.lock().unwrap();
+                json!({
+                    "url": u.url,
+                    "weight": u.weight,
+                    "health": format!("{:?}", state.health),
+                    "circuit_breaker": format!("{:?}", state.circuit_breaker.state()),
+                    "active_connections": u.active_connections(),
+                    "latency_us": u.latency_us(),
+                })
+            }).collect::<Vec<_>>(),
+        })
+    }).collect();
+
     Json(json!({
         "status": "ok",
         "version": env!("CARGO_PKG_VERSION"),
-        "pools": state.config.pools.len(),
         "uptime_secs": uptime,
+        "pools": pools_status,
     }))
 }
 
@@ -142,7 +178,6 @@ async fn auth_middleware(
     request: Request<axum::body::Body>,
     next: middleware::Next,
 ) -> impl IntoResponse {
-    // API key extraction stub
     next.run(request).await
 }
 
@@ -150,7 +185,6 @@ async fn rate_limit_middleware(
     request: Request<axum::body::Body>,
     next: middleware::Next,
 ) -> impl IntoResponse {
-    // Rate limiter check stub
     next.run(request).await
 }
 
@@ -158,7 +192,6 @@ async fn cache_middleware(
     request: Request<axum::body::Body>,
     next: middleware::Next,
 ) -> impl IntoResponse {
-    // Cache lookup stub
     next.run(request).await
 }
 
