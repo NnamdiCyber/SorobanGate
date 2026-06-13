@@ -85,6 +85,7 @@ pub struct UpstreamPool {
     pub name: String,
     pub upstreams: Vec<Arc<UpstreamState>>,
     pub algorithm: crate::config::LoadBalancingAlgorithm,
+    pub wrr_counter: AtomicU64,
 }
 
 impl UpstreamPool {
@@ -98,6 +99,14 @@ impl UpstreamPool {
 
     pub fn all_upstreams(&self) -> &[Arc<UpstreamState>] {
         &self.upstreams
+    }
+
+    pub fn select_upstream(&self) -> Option<Arc<UpstreamState>> {
+        let healthy = self.healthy_upstreams();
+        if healthy.is_empty() {
+            return None;
+        }
+        balancer::select(&healthy, &self.algorithm, &self.wrr_counter)
     }
 }
 
@@ -122,6 +131,7 @@ pub fn create_pools(config: &crate::config::Config) -> Vec<Arc<UpstreamPool>> {
                 name: pool_cfg.name.clone(),
                 upstreams,
                 algorithm: pool_cfg.algorithm.clone(),
+                wrr_counter: AtomicU64::new(0),
             })
         })
         .collect()
