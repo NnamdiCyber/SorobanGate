@@ -157,6 +157,7 @@ async fn check_upstream(upstream: Arc<crate::pool::UpstreamState>, config: &Conf
 #[cfg(test)]
 mod tests {
     use crate::pool::{HealthStatus, UpstreamPool, UpstreamState};
+    use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
 
     #[test]
@@ -265,6 +266,7 @@ mod tests {
             name: "test".to_string(),
             upstreams: vec![healthy, unhealthy],
             algorithm: crate::config::LoadBalancingAlgorithm::Wrr,
+            wrr_counter: AtomicU64::new(0),
         };
 
         let h = pool.healthy_upstreams();
@@ -297,6 +299,7 @@ mod tests {
             name: "test".to_string(),
             upstreams: vec![upstream],
             algorithm: crate::config::LoadBalancingAlgorithm::Wrr,
+            wrr_counter: AtomicU64::new(0),
         };
 
         let healthy = pool.healthy_upstreams();
