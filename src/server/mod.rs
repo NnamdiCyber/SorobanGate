@@ -15,23 +15,38 @@ use axum::{
 use serde_json::json;
 use tower_http::trace::TraceLayer;
 
-use crate::config::Config;
-use crate::pool;
+use crate::{cache, cache::Cache, config::Config, pool, routing};
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
     pub start_time: Instant,
     pub pools: Vec<Arc<pool::UpstreamPool>>,
+    pub router: routing::Router,
+    pub cache: Option<Arc<dyn Cache + Send + Sync>>,
+    pub cache_ttl_table: cache::TtlTable,
 }
 
 pub async fn serve(config: Config, skip_initial_health_check: bool) -> anyhow::Result<()> {
     let pools: Vec<Arc<pool::UpstreamPool>> = pool::create_pools(&config);
+    let router = routing::Router::new(&config.routing);
+
+    let cache_backend: Option<Arc<dyn Cache + Send + Sync>> = if config.cache.enabled {
+        Some(Arc::new(cache::memory::MemoryCache::new(
+            config.cache.max_memory_mb,
+        )))
+    } else {
+        None
+    };
+    let cache_ttl_table = cache::TtlTable::new(&config.cache.rules);
 
     let state = AppState {
         config: Arc::new(config),
         start_time: Instant::now(),
         pools: pools.clone(),
+        router,
+        cache: cache_backend,
+        cache_ttl_table,
     };
 
     // Spawn health check task
