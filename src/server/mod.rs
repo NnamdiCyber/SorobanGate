@@ -1,21 +1,23 @@
 pub mod admin;
 pub mod proxy;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
 use axum::{
     Router, routing::get,
     extract::State,
-    http::Request,
+    http::{Request, StatusCode},
     middleware,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     Json,
 };
 use serde_json::json;
 use tower_http::trace::TraceLayer;
 
-use crate::{cache, cache::Cache, config::Config, pool, routing};
+use crate::{auth, cache, cache::Cache, config, config::Config, pool, rate_limit, rate_limit::RateLimiter, routing};
+use crate::auth::KeyStore;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -25,9 +27,12 @@ pub struct AppState {
     pub router: routing::Router,
     pub cache: Option<Arc<dyn Cache + Send + Sync>>,
     pub cache_ttl_table: cache::TtlTable,
+    pub rate_limiter: Option<Arc<rate_limit::RateLimiterDispatch>>,
+    pub key_store: Option<Arc<auth::KeyStoreDispatch>>,
+    pub auth_tiers: HashMap<String, config::KeyTier>,
 }
 
-pub async fn serve(config: Config, skip_initial_health_check: bool) -> anyhow::Result<()> {
+pub async fn serve(mut config: Config, skip_initial_health_check: bool) -> anyhow::Result<()> {
     let pools: Vec<Arc<pool::UpstreamPool>> = pool::create_pools(&config);
     let router = routing::Router::new(&config.routing);
 
@@ -40,13 +45,39 @@ pub async fn serve(config: Config, skip_initial_health_check: bool) -> anyhow::R
     };
     let cache_ttl_table = cache::TtlTable::new(&config.cache.rules);
 
+    let key_store: Option<Arc<auth::KeyStoreDispatch>> = if config.auth.enabled {
+        let db_path = config.auth.db_path.to_str().unwrap_or("sorobangate.db").to_string();
+        Some(Arc::new(auth::KeyStoreDispatch::Sqlite(
+            Arc::new(auth::store::sqlite::SqliteKeyStore::new(&db_path)?),
+        )))
+    } else {
+        None
+    };
+
+    let auth_tiers_list = std::mem::take(&mut config.auth.tiers);
+    let config = Arc::new(config);
+    let auth_tiers: HashMap<String, config::KeyTier> = auth_tiers_list.into_iter()
+        .map(|t| (t.name.clone(), t))
+        .collect();
+
+    let rate_limiter: Option<Arc<rate_limit::RateLimiterDispatch>> = if config.rate_limit.enabled {
+        Some(Arc::new(rate_limit::RateLimiterDispatch::Memory(
+            Arc::new(rate_limit::token_bucket::TokenBucketRateLimiter::new()),
+        )))
+    } else {
+        None
+    };
+
     let state = AppState {
-        config: Arc::new(config),
+        config: config.clone(),
         start_time: Instant::now(),
         pools: pools.clone(),
         router,
         cache: cache_backend,
         cache_ttl_table,
+        rate_limiter,
+        key_store,
+        auth_tiers,
     };
 
     // Spawn health check task
@@ -59,10 +90,10 @@ pub async fn serve(config: Config, skip_initial_health_check: bool) -> anyhow::R
     let app = Router::new()
         .route("/health", get(health_handler))
         .fallback(proxy::proxy_handler)
-        .layer(middleware::from_fn(cache_middleware))
-        .layer(middleware::from_fn(rate_limit_middleware))
-        .layer(middleware::from_fn(auth_middleware))
-        .layer(middleware::from_fn(gateway_middleware))
+        .layer(middleware::from_fn_with_state(state.clone(), cache_middleware))
+        .layer(middleware::from_fn_with_state(state.clone(), rate_limit_middleware))
+        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .layer(middleware::from_fn_with_state(state.clone(), gateway_middleware))
         .layer(TraceLayer::new_for_http())
         .with_state(state.clone());
 
@@ -77,6 +108,8 @@ pub async fn serve(config: Config, skip_initial_health_check: bool) -> anyhow::R
         http = %state.config.server.bind,
         admin = %state.config.server.admin_bind,
         pools = pools.len(),
+        rate_limit = state.rate_limiter.is_some(),
+        auth = state.key_store.is_some(),
         "Server listening"
     );
 
@@ -175,6 +208,7 @@ async fn health_handler(
 }
 
 async fn gateway_middleware(
+    State(_state): State<AppState>,
     request: Request<axum::body::Body>,
     next: middleware::Next,
 ) -> impl IntoResponse {
@@ -190,24 +224,164 @@ async fn gateway_middleware(
 }
 
 async fn auth_middleware(
-    request: Request<axum::body::Body>,
+    State(state): State<AppState>,
+    mut request: Request<axum::body::Body>,
     next: middleware::Next,
 ) -> impl IntoResponse {
-    next.run(request).await
+    let config = &state.config;
+
+    if !config.auth.enabled || state.key_store.is_none() {
+        return next.run(request).await;
+    }
+
+    let api_key = auth::extract_api_key(request.headers(), request.uri());
+
+    match api_key {
+        Some(ref key) => {
+            let store = state.key_store.as_ref().unwrap();
+            match store.lookup(key) {
+                Ok(Some(entry)) => {
+                    if entry.is_revoked {
+                        return auth_error_response(
+                            StatusCode::FORBIDDEN,
+                            -32003,
+                            "API key has been revoked",
+                        );
+                    }
+                    request.extensions_mut().insert(auth::AuthTier(entry.tier.clone()));
+                    request.extensions_mut().insert(auth::AuthKeyId(entry.id.clone()));
+                    tracing::debug!(tier = %entry.tier, key_id = %entry.id, "Authenticated request");
+                    next.run(request).await
+                }
+                Ok(None) => {
+                    tracing::warn!("Unknown API key presented");
+                    if config.auth.allow_unauthenticated {
+                        next.run(request).await
+                    } else {
+                        auth_error_response(
+                            StatusCode::UNAUTHORIZED,
+                            -32001,
+                            "Invalid API key",
+                        )
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Key store lookup failed");
+                    auth_error_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        -32002,
+                        "Authentication service unavailable",
+                    )
+                }
+            }
+        }
+        None => {
+            if config.auth.allow_unauthenticated {
+                next.run(request).await
+            } else {
+                auth_error_response(
+                    StatusCode::UNAUTHORIZED,
+                    -32001,
+                    "Authentication required - provide API key via Authorization: Bearer, X-API-Key header, or api_key query parameter",
+                )
+            }
+        }
+    }
 }
 
 async fn rate_limit_middleware(
+    State(state): State<AppState>,
+    request: Request<axum::body::Body>,
+    next: middleware::Next,
+) -> impl IntoResponse {
+    let config = &state.config;
+
+    if !config.rate_limit.enabled || state.rate_limiter.is_none() {
+        return next.run(request).await;
+    }
+
+    let limiter = state.rate_limiter.as_ref().unwrap();
+
+    let (rate_key, rps, burst) = if let Some(tier_name) = request.extensions().get::<auth::AuthTier>() {
+        let tier = state.auth_tiers.get(&tier_name.0);
+        match tier {
+            Some(t) => (format!("tier:{}", t.name), t.requests_per_second, t.burst),
+            None => {
+                let client_ip = extract_client_ip(request.headers(), request.uri());
+                (format!("ip:{}", client_ip), config.rate_limit.ip_fallback_rps, config.rate_limit.ip_fallback_burst)
+            }
+        }
+    } else {
+        let client_ip = extract_client_ip(request.headers(), request.uri());
+        (format!("ip:{}", client_ip), config.rate_limit.ip_fallback_rps, config.rate_limit.ip_fallback_burst)
+    };
+
+    match limiter.check_rate(&rate_key, rps, burst) {
+        Ok(()) => next.run(request).await,
+        Err(_) => {
+            tracing::warn!(rate_key = %rate_key, rps = rps, burst = burst, "Rate limit exceeded");
+            rate_limit_response()
+        }
+    }
+}
+
+async fn cache_middleware(
+    State(_state): State<AppState>,
     request: Request<axum::body::Body>,
     next: middleware::Next,
 ) -> impl IntoResponse {
     next.run(request).await
 }
 
-async fn cache_middleware(
-    request: Request<axum::body::Body>,
-    next: middleware::Next,
-) -> impl IntoResponse {
-    next.run(request).await
+fn extract_client_ip(headers: &axum::http::HeaderMap, _uri: &axum::http::Uri) -> String {
+    if let Some(val) = headers.get("X-Forwarded-For") {
+        if let Ok(s) = val.to_str() {
+            if let Some(ip) = s.split(',').next() {
+                let ip = ip.trim();
+                if !ip.is_empty() {
+                    return ip.to_string();
+                }
+            }
+        }
+    }
+    if let Some(val) = headers.get("X-Real-IP") {
+        if let Ok(s) = val.to_str() {
+            if !s.is_empty() {
+                return s.to_string();
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+fn rate_limit_response() -> Response {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(json!({
+            "jsonrpc": "2.0",
+            "id": null,
+            "error": {
+                "code": -32005,
+                "message": "Rate limit exceeded"
+            }
+        })),
+    )
+        .into_response()
+}
+
+fn auth_error_response(status: StatusCode, code: i32, message: impl Into<String>) -> Response {
+    (
+        status,
+        Json(json!({
+            "jsonrpc": "2.0",
+            "id": null,
+            "error": {
+                "code": code,
+                "message": message.into()
+            }
+        })),
+    )
+        .into_response()
 }
 
 async fn shutdown_signal() {
