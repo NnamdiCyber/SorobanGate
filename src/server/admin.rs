@@ -6,6 +6,8 @@ use axum::{
 };
 use serde_json::json;
 
+use crate::auth::KeyStore;
+
 pub fn router() -> Router<crate::server::AppState> {
     Router::new()
         .route("/admin/status", get(status_handler))
@@ -114,34 +116,117 @@ async fn upstream_disable_handler(
     )
 }
 
-async fn keys_list_handler() -> (StatusCode, Json<serde_json::Value>) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "error": "Not Implemented",
-            "message": "GET /admin/keys is not yet implemented"
-        })),
-    )
+async fn keys_list_handler(
+    State(state): State<crate::server::AppState>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    match state.key_store {
+        Some(ref store) => {
+            match store.list_keys() {
+                Ok(keys) => {
+                    let safe_keys: Vec<serde_json::Value> = keys.iter().map(|k| {
+                        json!({
+                            "id": k.id,
+                            "tier": k.tier,
+                            "label": k.label,
+                            "is_revoked": k.is_revoked,
+                            "created_at": k.created_at,
+                        })
+                    }).collect();
+                    (StatusCode::OK, Json(json!({ "keys": safe_keys, "total": safe_keys.len() })))
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to list API keys");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "error": "Failed to list API keys" })),
+                    )
+                }
+            }
+        }
+        None => (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({ "error": "Key store is disabled" })),
+        ),
+    }
 }
 
-async fn keys_create_handler() -> (StatusCode, Json<serde_json::Value>) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "error": "Not Implemented",
-            "message": "POST /admin/keys is not yet implemented"
-        })),
-    )
+async fn keys_create_handler(
+    State(state): State<crate::server::AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let raw_key = payload.get("key").and_then(|v| v.as_str()).unwrap_or("");
+    let tier = payload.get("tier").and_then(|v| v.as_str()).unwrap_or("default");
+    let label = payload.get("label").and_then(|v| v.as_str()).unwrap_or("");
+
+    if raw_key.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Field 'key' is required" })),
+        );
+    }
+
+    match state.key_store {
+        Some(ref store) => {
+            match store.create_key(raw_key, tier, label) {
+                Ok(entry) => {
+                    tracing::info!(key_id = %entry.id, tier = %entry.tier, "API key created");
+                    (
+                        StatusCode::CREATED,
+                        Json(json!({
+                            "status": "ok",
+                            "key": {
+                                "id": entry.id,
+                                "tier": entry.tier,
+                                "label": entry.label,
+                                "is_revoked": entry.is_revoked,
+                                "created_at": entry.created_at,
+                            }
+                        })),
+                    )
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to create API key");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "error": "Failed to create API key" })),
+                    )
+                }
+            }
+        }
+        None => (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({ "error": "Key store is disabled" })),
+        ),
+    }
 }
 
 async fn keys_delete_handler(
+    State(state): State<crate::server::AppState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "error": "Not Implemented",
-            "message": format!("DELETE /admin/keys/{} is not yet implemented", id)
-        })),
-    )
+    match state.key_store {
+        Some(ref store) => {
+            match store.revoke_key(&id) {
+                Ok(true) => {
+                    tracing::info!(key_id = %id, "API key revoked");
+                    (StatusCode::OK, Json(json!({ "status": "ok", "message": "Key revoked" })))
+                }
+                Ok(false) => (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({ "error": format!("Key '{}' not found", id) })),
+                ),
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to revoke API key");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "error": "Failed to revoke API key" })),
+                    )
+                }
+            }
+        }
+        None => (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({ "error": "Key store is disabled" })),
+        ),
+    }
 }
