@@ -1,13 +1,4 @@
-mod config;
-mod server;
-mod pool;
-mod routing;
-mod cache;
-mod rate_limit;
-mod auth;
-mod metrics;
-mod telemetry;
-
+use sorobangate::config;
 use clap::Parser;
 
 #[derive(Parser)]
@@ -27,10 +18,7 @@ async fn main() -> anyhow::Result<()> {
     let config = config::Config::load(&cli.config)?;
     config.validate()?;
 
-    let log_filter = format!(
-        "sorobangate={}",
-        config.server.log_level.as_str()
-    );
+    let log_filter = format!("sorobangate={}", config.server.log_level.as_str());
 
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(
@@ -50,12 +38,7 @@ async fn main() -> anyhow::Result<()> {
         "SorobanGate starting"
     );
 
-    tracing::debug!(
-        skip_health_check = cli.skip_initial_health_check,
-        "Configuration loaded"
-    );
-
-    server::serve(config, cli.skip_initial_health_check).await?;
+    sorobangate::server::serve(config, cli.skip_initial_health_check).await?;
 
     Ok(())
 }

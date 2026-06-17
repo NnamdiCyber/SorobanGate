@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2021"
 description = "High-performance Soroban RPC gateway & load balancer"
 
+[lib]
+name = "sorobangate"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sorobangate"
+path = "src/main.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 axum = "0.7"
@@ -22,6 +30,7 @@ tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 moka = { version = "0.12", features = ["future", "sync"] }
 url = "2"
+percent-encoding = "2"
 sha2 = "0.10"
 rand = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
@@ -29,6 +38,15 @@ argon2 = "0.5"
 prometheus-client = "0.22"
 uuid = { version = "1", features = ["v4"] }
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+tokio = { version = "1", features = ["full"] }
+
+[[bench]]
+name = "gateway_bench"
+harness = false
 
 [profile.release]
 opt-level = 3
