@@ -1,0 +1,25 @@
+[Unit]
+Description=SorobanGate RPC Gateway
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sorobangate
+Group=sorobangate
+ExecStart=/usr/local/bin/sorobangate --config /etc/sorobangate/config.toml
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=100000
+
+# Allow binding to ports < 1024 without root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Harden the service
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sorobangate
+
+[Install]
+WantedBy=multi-user.target

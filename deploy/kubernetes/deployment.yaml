@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sorobangate
+  labels:
+    app: sorobangate
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: sorobangate
+  template:
+    metadata:
+      labels:
+        app: sorobangate
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: sorobangate
+          image: ghcr.io/sorobangate/sorobangate:latest
+          ports:
+            - containerPort: 8080
+              name: rpc
+            - containerPort: 9090
+              name: metrics
+          volumeMounts:
+            - name: config
+              mountPath: /etc/sorobangate
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "2"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: sorobangate-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sorobangate
+spec:
+  selector:
+    app: sorobangate
+  ports:
+    - name: rpc
+      port: 80
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sorobangate-config
+data:
+  config.toml: |
+    [server]
+    bind = "0.0.0.0:8080"
+    admin_bind = "127.0.0.1:9000"
+    metrics_bind = "0.0.0.0:9090"
+
+    [[pools]]
+    name = "mainnet"
+    algorithm = "lc"
+
+      [[pools.upstreams]]
+      url = "https://soroban-testnet.stellar.org"
+      weight = 1
+
+    [routing]
+    default_pool = "mainnet"
+
+    [rate_limit]
+    enabled = true
+
+    [auth]
+    enabled = false
+
+    [cache]
+    enabled = true
+    max_memory_mb = 256
+
+    [[cache.rules]]
+    methods = ["getLatestLedger"]
+    ttl_secs = 2
+
+    [telemetry]
+    metrics_enabled = true
