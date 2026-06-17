@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use crate::{
     cache::compute_cache_key,
+    metrics,
     pool::UpstreamState,
     server::AppState,
 };
@@ -56,12 +57,35 @@ pub async fn proxy_handler(
                     cached = true,
                     "Cache hit"
                 );
+                if let Some(ref m) = state.metrics {
+                    m.metrics.cache_hits_total
+                        .get_or_create(&metrics::MethodLabels { method: method.clone() })
+                        .inc();
+                    m.metrics.requests_total
+                        .get_or_create(&metrics::RequestLabels {
+                            method: method.clone(),
+                            pool: pool_name.clone(),
+                            status: "200".to_string(),
+                            cached: "true".to_string(),
+                        })
+                        .inc();
+                    m.metrics.request_duration_seconds
+                        .get_or_create(&metrics::MethodPoolLabels {
+                            method: method.clone(),
+                            pool: pool_name.clone(),
+                        })
+                        .observe(elapsed.as_secs_f64());
+                }
                 return (
                     StatusCode::OK,
                     [("Content-Type", "application/json")],
                     cached_body,
                 )
                     .into_response();
+            } else if let Some(ref m) = state.metrics {
+                m.metrics.cache_misses_total
+                    .get_or_create(&metrics::MethodLabels { method: method.clone() })
+                    .inc();
             }
         }
     }
@@ -114,6 +138,29 @@ pub async fn proxy_handler(
                 "Proxy request completed"
             );
 
+            if let Some(ref m) = state.metrics {
+                m.metrics.requests_total
+                    .get_or_create(&metrics::RequestLabels {
+                        method: method.clone(),
+                        pool: pool_name.clone(),
+                        status: upstream_status.as_u16().to_string(),
+                        cached: "false".to_string(),
+                    })
+                    .inc();
+                m.metrics.request_duration_seconds
+                    .get_or_create(&metrics::MethodPoolLabels {
+                        method: method.clone(),
+                        pool: pool_name.clone(),
+                    })
+                    .observe(elapsed.as_secs_f64());
+                m.metrics.upstream_latency_seconds
+                    .get_or_create(&metrics::UpstreamLabels {
+                        upstream: upstream.url.clone(),
+                        pool: pool_name.clone(),
+                    })
+                    .observe(elapsed.as_secs_f64());
+            }
+
             if let Some(ref cache) = state.cache {
                 let ttl = state.cache_ttl_table.ttl_for(&method);
                 if !ttl.is_zero() && upstream_status.is_success() {
@@ -149,6 +196,17 @@ pub async fn proxy_handler(
             } else {
                 StatusCode::BAD_GATEWAY
             };
+
+            if let Some(ref m) = state.metrics {
+                m.metrics.requests_total
+                    .get_or_create(&metrics::RequestLabels {
+                        method: method.clone(),
+                        pool: pool_name.clone(),
+                        status: status.as_u16().to_string(),
+                        cached: "false".to_string(),
+                    })
+                    .inc();
+            }
 
             json_error_response(status, -32000, &e.to_string())
         }

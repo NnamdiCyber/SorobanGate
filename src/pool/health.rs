@@ -14,7 +14,15 @@ pub async fn run_health_checks(
     config: Arc<Config>,
     skip_initial: bool,
 ) {
-    if !skip_initial {
+    if skip_initial {
+        // Mark all upstreams healthy so the gateway can serve traffic immediately
+        for pool in &pools {
+            for upstream in &pool.upstreams {
+                let mut state = upstream.mutable.lock().unwrap();
+                state.health = HealthStatus::Healthy;
+            }
+        }
+    } else {
         run_health_check_cycle(&pools, &config).await;
     }
 
