@@ -1,14 +1,14 @@
 use axum::{
-    Router, routing::{get, post, delete},
     extract::State,
     http::StatusCode,
-    Json,
+    routing::{delete, get, post},
+    Json, Router,
 };
 use serde_json::json;
 
 use crate::auth::KeyStore;
-use crate::pool::{HealthStatus};
 use crate::pool::circuit_breaker::CircuitBreakerState;
+use crate::pool::HealthStatus;
 
 pub fn router() -> Router<crate::server::AppState> {
     Router::new()
@@ -16,8 +16,14 @@ pub fn router() -> Router<crate::server::AppState> {
         .route("/admin/reload", post(reload_handler))
         .route("/admin/cache", delete(cache_flush_handler))
         .route("/admin/cache/stats", get(cache_stats_handler))
-        .route("/admin/upstreams/{url}/enable", post(upstream_enable_handler))
-        .route("/admin/upstreams/{url}/disable", post(upstream_disable_handler))
+        .route(
+            "/admin/upstreams/{url}/enable",
+            post(upstream_enable_handler),
+        )
+        .route(
+            "/admin/upstreams/{url}/disable",
+            post(upstream_disable_handler),
+        )
         .route("/admin/keys", get(keys_list_handler))
         .route("/admin/keys", post(keys_create_handler))
         .route("/admin/keys/{id}", delete(keys_delete_handler))
@@ -28,39 +34,54 @@ async fn status_handler(
 ) -> (StatusCode, Json<serde_json::Value>) {
     let uptime = state.start_time.elapsed().as_secs();
 
-    let pools: Vec<serde_json::Value> = state.pools.iter().map(|pool| {
-        let upstreams: Vec<serde_json::Value> = pool.upstreams.iter().map(|u| {
-            let mstate = u.mutable.lock().unwrap();
-            let cb_state = match mstate.circuit_breaker.state() {
-                CircuitBreakerState::Closed => "closed",
-                CircuitBreakerState::Open => "open",
-                CircuitBreakerState::HalfOpen => "half-open",
-            };
-            let health = if mstate.health == HealthStatus::Healthy { "healthy" } else { "unhealthy" };
-            let latency_ms = u.latency_us() / 1000;
+    let pools: Vec<serde_json::Value> = state
+        .pools
+        .iter()
+        .map(|pool| {
+            let upstreams: Vec<serde_json::Value> = pool
+                .upstreams
+                .iter()
+                .map(|u| {
+                    let mstate = u.mutable.lock().unwrap();
+                    let cb_state = match mstate.circuit_breaker.state() {
+                        CircuitBreakerState::Closed => "closed",
+                        CircuitBreakerState::Open => "open",
+                        CircuitBreakerState::HalfOpen => "half-open",
+                    };
+                    let health = if mstate.health == HealthStatus::Healthy {
+                        "healthy"
+                    } else {
+                        "unhealthy"
+                    };
+                    let latency_ms = u.latency_us() / 1000;
+                    json!({
+                        "url": u.url,
+                        "state": health,
+                        "circuit_breaker": cb_state,
+                        "active_connections": u.active_connections(),
+                        "weight": u.weight,
+                        "latency_p99_ms": latency_ms,
+                    })
+                })
+                .collect();
             json!({
-                "url": u.url,
-                "state": health,
-                "circuit_breaker": cb_state,
-                "active_connections": u.active_connections(),
-                "weight": u.weight,
-                "latency_p99_ms": latency_ms,
+                "name": pool.name,
+                "algorithm": format!("{:?}", pool.algorithm).to_lowercase(),
+                "total_upstreams": pool.upstreams.len(),
+                "healthy_upstreams": pool.healthy_upstreams().len(),
+                "upstreams": upstreams,
             })
-        }).collect();
-        json!({
-            "name": pool.name,
-            "algorithm": format!("{:?}", pool.algorithm).to_lowercase(),
-            "total_upstreams": pool.upstreams.len(),
-            "healthy_upstreams": pool.healthy_upstreams().len(),
-            "upstreams": upstreams,
         })
-    }).collect();
+        .collect();
 
-    (StatusCode::OK, Json(json!({
-        "version": env!("CARGO_PKG_VERSION"),
-        "uptime_secs": uptime,
-        "pools": pools,
-    })))
+    (
+        StatusCode::OK,
+        Json(json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "uptime_secs": uptime,
+            "pools": pools,
+        })),
+    )
 }
 
 async fn reload_handler() -> (StatusCode, Json<serde_json::Value>) {
@@ -77,9 +98,15 @@ async fn cache_flush_handler(
         Some(ref cache) => {
             cache.flush();
             tracing::info!("Cache flushed via admin API");
-            (StatusCode::OK, Json(json!({ "status": "ok", "message": "Cache flushed" })))
+            (
+                StatusCode::OK,
+                Json(json!({ "status": "ok", "message": "Cache flushed" })),
+            )
         }
-        None => (StatusCode::OK, Json(json!({ "status": "ok", "message": "Cache is disabled" }))),
+        None => (
+            StatusCode::OK,
+            Json(json!({ "status": "ok", "message": "Cache is disabled" })),
+        ),
     }
 }
 
@@ -94,13 +121,16 @@ async fn cache_stats_handler(
             } else {
                 0.0
             };
-            (StatusCode::OK, Json(json!({
-                "hit_count": stats.hit_count,
-                "miss_count": stats.miss_count,
-                "hit_rate": (hit_rate * 10000.0).round() / 10000.0,
-                "size": stats.size,
-                "eviction_count": stats.eviction_count,
-            })))
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "hit_count": stats.hit_count,
+                    "miss_count": stats.miss_count,
+                    "hit_rate": (hit_rate * 10000.0).round() / 10000.0,
+                    "size": stats.size,
+                    "eviction_count": stats.eviction_count,
+                })),
+            )
         }
         None => (StatusCode::OK, Json(json!({ "enabled": false }))),
     }
@@ -144,12 +174,18 @@ fn set_upstream_health(
                     tracing::info!(upstream = %target_url, "Upstream force-disabled via admin API");
                 }
                 let action = if enable { "enabled" } else { "disabled" };
-                return (StatusCode::OK, Json(json!({ "status": "ok", "upstream": target_url, "action": action })));
+                return (
+                    StatusCode::OK,
+                    Json(json!({ "status": "ok", "upstream": target_url, "action": action })),
+                );
             }
         }
     }
 
-    (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Upstream '{}' not found", target_url) })))
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "error": format!("Upstream '{}' not found", target_url) })),
+    )
 }
 
 fn percent_decode(s: &str) -> String {
@@ -165,22 +201,36 @@ async fn keys_list_handler(
     match state.key_store {
         Some(ref store) => match store.list_keys() {
             Ok(keys) => {
-                let safe_keys: Vec<serde_json::Value> = keys.iter().map(|k| json!({
-                    "id": k.id,
-                    "tier": k.tier,
-                    "label": k.label,
-                    "is_revoked": k.is_revoked,
-                    "created_at": k.created_at,
-                })).collect();
+                let safe_keys: Vec<serde_json::Value> = keys
+                    .iter()
+                    .map(|k| {
+                        json!({
+                            "id": k.id,
+                            "tier": k.tier,
+                            "label": k.label,
+                            "is_revoked": k.is_revoked,
+                            "created_at": k.created_at,
+                        })
+                    })
+                    .collect();
                 let total = safe_keys.len();
-                (StatusCode::OK, Json(json!({ "keys": safe_keys, "total": total })))
+                (
+                    StatusCode::OK,
+                    Json(json!({ "keys": safe_keys, "total": total })),
+                )
             }
             Err(e) => {
                 tracing::error!(error = %e, "Failed to list API keys");
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to list API keys" })))
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "Failed to list API keys" })),
+                )
             }
         },
-        None => (StatusCode::NOT_IMPLEMENTED, Json(json!({ "error": "Key store is disabled" }))),
+        None => (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({ "error": "Key store is disabled" })),
+        ),
     }
 }
 
@@ -190,26 +240,43 @@ async fn keys_create_handler(
 ) -> (StatusCode, Json<serde_json::Value>) {
     let raw_key = match payload.get("key").and_then(|v| v.as_str()) {
         Some(k) if !k.is_empty() => k.to_string(),
-        _ => return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Field 'key' is required" }))),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Field 'key' is required" })),
+            )
+        }
     };
-    let tier = payload.get("tier").and_then(|v| v.as_str()).unwrap_or("default");
+    let tier = payload
+        .get("tier")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default");
     let label = payload.get("label").and_then(|v| v.as_str()).unwrap_or("");
 
     match state.key_store {
         Some(ref store) => match store.create_key(&raw_key, tier, label) {
             Ok(entry) => {
                 tracing::info!(key_id = %entry.id, tier = %entry.tier, "API key created");
-                (StatusCode::CREATED, Json(json!({
-                    "status": "ok",
-                    "key": { "id": entry.id, "tier": entry.tier, "label": entry.label, "created_at": entry.created_at }
-                })))
+                (
+                    StatusCode::CREATED,
+                    Json(json!({
+                        "status": "ok",
+                        "key": { "id": entry.id, "tier": entry.tier, "label": entry.label, "created_at": entry.created_at }
+                    })),
+                )
             }
             Err(e) => {
                 tracing::error!(error = %e, "Failed to create API key");
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to create API key" })))
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "Failed to create API key" })),
+                )
             }
         },
-        None => (StatusCode::NOT_IMPLEMENTED, Json(json!({ "error": "Key store is disabled" }))),
+        None => (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({ "error": "Key store is disabled" })),
+        ),
     }
 }
 
@@ -221,14 +288,26 @@ async fn keys_delete_handler(
         Some(ref store) => match store.revoke_key(&id) {
             Ok(true) => {
                 tracing::info!(key_id = %id, "API key revoked");
-                (StatusCode::OK, Json(json!({ "status": "ok", "message": "Key revoked" })))
+                (
+                    StatusCode::OK,
+                    Json(json!({ "status": "ok", "message": "Key revoked" })),
+                )
             }
-            Ok(false) => (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Key '{}' not found", id) }))),
+            Ok(false) => (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Key '{}' not found", id) })),
+            ),
             Err(e) => {
                 tracing::error!(error = %e, "Failed to revoke API key");
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "Failed to revoke API key" })))
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "Failed to revoke API key" })),
+                )
             }
         },
-        None => (StatusCode::NOT_IMPLEMENTED, Json(json!({ "error": "Key store is disabled" }))),
+        None => (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({ "error": "Key store is disabled" })),
+        ),
     }
 }

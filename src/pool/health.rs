@@ -99,10 +99,8 @@ async fn check_upstream(upstream: Arc<crate::pool::UpstreamState>, config: &Conf
     let client: hyper_util::client::legacy::Client<
         hyper_util::client::legacy::connect::HttpConnector,
         Full<Bytes>,
-    > = hyper_util::client::legacy::Client::builder(
-        hyper_util::rt::TokioExecutor::new(),
-    )
-    .build(connector);
+    > = hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+        .build(connector);
 
     let start = Instant::now();
     let timeout = Duration::from_millis(config.health_check.timeout_ms);
@@ -118,18 +116,17 @@ async fn check_upstream(upstream: Arc<crate::pool::UpstreamState>, config: &Conf
         Ok(Ok(response)) if response.status().is_success() => {
             state.consecutive_successes += 1;
             state.consecutive_failures = 0;
-            upstream
-                .latency_ns
-                .store(elapsed.as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+            upstream.latency_ns.store(
+                elapsed.as_nanos() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
 
             let prev_health = state.health;
             if state.consecutive_successes >= config.health_check.healthy_threshold {
                 state.health = HealthStatus::Healthy;
             }
 
-            if prev_health != HealthStatus::Healthy
-                && state.health == HealthStatus::Healthy
-            {
+            if prev_health != HealthStatus::Healthy && state.health == HealthStatus::Healthy {
                 tracing::info!(
                     url = %upstream.url,
                     pool = %upstream.pool_name,
@@ -148,9 +145,7 @@ async fn check_upstream(upstream: Arc<crate::pool::UpstreamState>, config: &Conf
                 state.health = HealthStatus::Unhealthy;
             }
 
-            if prev_health != HealthStatus::Unhealthy
-                && state.health == HealthStatus::Unhealthy
-            {
+            if prev_health != HealthStatus::Unhealthy && state.health == HealthStatus::Unhealthy {
                 tracing::warn!(
                     url = %upstream.url,
                     pool = %upstream.pool_name,

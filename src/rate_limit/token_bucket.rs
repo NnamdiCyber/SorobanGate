@@ -26,8 +26,12 @@ impl Default for TokenBucketRateLimiter {
 }
 
 impl TokenBucketRateLimiter {
-
-    pub fn check_rate(&self, key: &str, requests_per_second: u32, burst: u32) -> Result<(), super::RateLimited> {
+    pub fn check_rate(
+        &self,
+        key: &str,
+        requests_per_second: u32,
+        burst: u32,
+    ) -> Result<(), super::RateLimited> {
         let mut buckets = self.buckets.lock().unwrap();
         let now = Instant::now();
         let bucket = buckets.entry(key.to_string()).or_insert(Bucket {
@@ -58,7 +62,11 @@ mod tests {
     fn test_burst_allowed() {
         let limiter = TokenBucketRateLimiter::new();
         for i in 0..10 {
-            assert!(limiter.check_rate("test_burst_allowed", 5, 10).is_ok(), "request {} should be allowed", i);
+            assert!(
+                limiter.check_rate("test_burst_allowed", 5, 10).is_ok(),
+                "request {} should be allowed",
+                i
+            );
         }
         assert!(limiter.check_rate("test_burst_allowed", 5, 10).is_err());
     }

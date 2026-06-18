@@ -7,12 +7,8 @@ async fn test_rate_limit_allows_burst_then_rejects() {
     let resp_val = json!({ "jsonrpc": "2.0", "id": 1, "result": "ok" });
     let (mock_addr, _shutdown) = common::start_mock(resp_val).await;
     // ip_fallback_rps = 2, burst = 2
-    let gw_addr = common::start_gateway_with_config(
-        &format!("http://{}", mock_addr),
-        true,
-        false,
-    )
-    .await;
+    let gw_addr =
+        common::start_gateway_with_config(&format!("http://{}", mock_addr), true, false).await;
 
     let client = reqwest::Client::new();
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "getHealth", "params": [] });

@@ -16,7 +16,9 @@ pub async fn start_mock(response: serde_json::Value) -> (SocketAddr, oneshot::Se
             async move { axum::Json(r) }
         });
         axum::serve(listener, app)
-            .with_graceful_shutdown(async { rx.await.ok(); })
+            .with_graceful_shutdown(async {
+                rx.await.ok();
+            })
             .await
             .ok();
     });
@@ -91,7 +93,9 @@ metrics_enabled = false
         upstream_url, rate_section, cache_section
     );
     let config: sorobangate::config::Config = toml::de::from_str(&toml).unwrap();
-    let app = sorobangate::server::build_test_app(config, true).await.unwrap();
+    let app = sorobangate::server::build_test_app(config, true)
+        .await
+        .unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(axum::serve(listener, app).into_future());

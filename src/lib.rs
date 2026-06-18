@@ -1,9 +1,9 @@
-pub mod config;
-pub mod server;
-pub mod pool;
-pub mod routing;
-pub mod cache;
-pub mod rate_limit;
 pub mod auth;
+pub mod cache;
+pub mod config;
 pub mod metrics;
+pub mod pool;
+pub mod rate_limit;
+pub mod routing;
+pub mod server;
 pub mod telemetry;

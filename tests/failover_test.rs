@@ -15,7 +15,11 @@ async fn test_failover_when_upstream_unreachable() {
         .unwrap();
 
     // Expect 503 (no healthy upstreams) or 502/504 (connection error)
-    assert!(resp.status().is_server_error(), "Expected 5xx, got {}", resp.status());
+    assert!(
+        resp.status().is_server_error(),
+        "Expected 5xx, got {}",
+        resp.status()
+    );
 }
 
 #[tokio::test]

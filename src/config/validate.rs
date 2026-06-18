@@ -64,8 +64,7 @@ pub fn validate(config: &Config) -> anyhow::Result<()> {
         );
     }
 
-    if config.rate_limit.enabled
-        && config.rate_limit.store == crate::config::RateLimitStore::Redis
+    if config.rate_limit.enabled && config.rate_limit.store == crate::config::RateLimitStore::Redis
     {
         anyhow::ensure!(
             config.cache.redis_url.is_some(),

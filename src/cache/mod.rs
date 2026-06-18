@@ -1,8 +1,8 @@
 pub mod memory;
 
-use std::time::Duration;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use sha2::{Sha256, Digest};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CacheStats {
@@ -45,8 +45,8 @@ impl TtlTable {
 }
 
 pub fn compute_cache_key(body: &[u8]) -> Vec<u8> {
-    let mut value: serde_json::Value = serde_json::from_slice(body)
-        .unwrap_or(serde_json::Value::Null);
+    let mut value: serde_json::Value =
+        serde_json::from_slice(body).unwrap_or(serde_json::Value::Null);
     if let serde_json::Value::Object(ref mut obj) = value {
         obj.remove("id");
         obj.remove("jsonrpc");

@@ -9,12 +9,7 @@ use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::{
-    cache::compute_cache_key,
-    metrics,
-    pool::UpstreamState,
-    server::AppState,
-};
+use crate::{cache::compute_cache_key, metrics, pool::UpstreamState, server::AppState};
 
 pub async fn proxy_handler(
     State(state): State<AppState>,
@@ -58,10 +53,14 @@ pub async fn proxy_handler(
                     "Cache hit"
                 );
                 if let Some(ref m) = state.metrics {
-                    m.metrics.cache_hits_total
-                        .get_or_create(&metrics::MethodLabels { method: method.clone() })
+                    m.metrics
+                        .cache_hits_total
+                        .get_or_create(&metrics::MethodLabels {
+                            method: method.clone(),
+                        })
                         .inc();
-                    m.metrics.requests_total
+                    m.metrics
+                        .requests_total
                         .get_or_create(&metrics::RequestLabels {
                             method: method.clone(),
                             pool: pool_name.clone(),
@@ -69,7 +68,8 @@ pub async fn proxy_handler(
                             cached: "true".to_string(),
                         })
                         .inc();
-                    m.metrics.request_duration_seconds
+                    m.metrics
+                        .request_duration_seconds
                         .get_or_create(&metrics::MethodPoolLabels {
                             method: method.clone(),
                             pool: pool_name.clone(),
@@ -83,8 +83,11 @@ pub async fn proxy_handler(
                 )
                     .into_response();
             } else if let Some(ref m) = state.metrics {
-                m.metrics.cache_misses_total
-                    .get_or_create(&metrics::MethodLabels { method: method.clone() })
+                m.metrics
+                    .cache_misses_total
+                    .get_or_create(&metrics::MethodLabels {
+                        method: method.clone(),
+                    })
                     .inc();
             }
         }
@@ -99,7 +102,11 @@ pub async fn proxy_handler(
                 pool = %pool_name,
                 "Configured pool not found"
             );
-            return json_error_response(StatusCode::INTERNAL_SERVER_ERROR, -32000, "Pool not configured");
+            return json_error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                -32000,
+                "Pool not configured",
+            );
         }
     };
 
@@ -121,7 +128,12 @@ pub async fn proxy_handler(
     };
 
     upstream.increment_connection_count();
-    let result = forward_to_upstream(&upstream, &body_bytes, state.config.server.request_timeout_ms).await;
+    let result = forward_to_upstream(
+        &upstream,
+        &body_bytes,
+        state.config.server.request_timeout_ms,
+    )
+    .await;
     upstream.decrement_connection_count();
 
     match result {
@@ -139,7 +151,8 @@ pub async fn proxy_handler(
             );
 
             if let Some(ref m) = state.metrics {
-                m.metrics.requests_total
+                m.metrics
+                    .requests_total
                     .get_or_create(&metrics::RequestLabels {
                         method: method.clone(),
                         pool: pool_name.clone(),
@@ -147,13 +160,15 @@ pub async fn proxy_handler(
                         cached: "false".to_string(),
                     })
                     .inc();
-                m.metrics.request_duration_seconds
+                m.metrics
+                    .request_duration_seconds
                     .get_or_create(&metrics::MethodPoolLabels {
                         method: method.clone(),
                         pool: pool_name.clone(),
                     })
                     .observe(elapsed.as_secs_f64());
-                m.metrics.upstream_latency_seconds
+                m.metrics
+                    .upstream_latency_seconds
                     .get_or_create(&metrics::UpstreamLabels {
                         upstream: upstream.url.clone(),
                         pool: pool_name.clone(),
@@ -191,14 +206,16 @@ pub async fn proxy_handler(
                 "Upstream request failed"
             );
 
-            let status = if e.to_string().contains("timed out") || e.to_string().contains("timeout") {
+            let status = if e.to_string().contains("timed out") || e.to_string().contains("timeout")
+            {
                 StatusCode::GATEWAY_TIMEOUT
             } else {
                 StatusCode::BAD_GATEWAY
             };
 
             if let Some(ref m) = state.metrics {
-                m.metrics.requests_total
+                m.metrics
+                    .requests_total
                     .get_or_create(&metrics::RequestLabels {
                         method: method.clone(),
                         pool: pool_name.clone(),
@@ -227,10 +244,8 @@ async fn forward_to_upstream(
         .body(req_body)?;
 
     let connector = hyper_util::client::legacy::connect::HttpConnector::new();
-    let client = hyper_util::client::legacy::Client::builder(
-        hyper_util::rt::TokioExecutor::new(),
-    )
-    .build(connector);
+    let client = hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+        .build(connector);
 
     let timeout = Duration::from_millis(timeout_ms);
     let response = tokio::time::timeout(timeout, client.request(req))

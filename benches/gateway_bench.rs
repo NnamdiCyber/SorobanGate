@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use serde_json::json;
 use std::future::IntoFuture;
 use tokio::net::TcpListener;
@@ -61,7 +61,9 @@ fn bench_proxy_throughput(c: &mut Criterion) {
     let config = make_config(&upstream_url);
 
     let gateway_addr = rt.block_on(async {
-        let app = sorobangate::server::build_test_app(config, true).await.unwrap();
+        let app = sorobangate::server::build_test_app(config, true)
+            .await
+            .unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(axum::serve(listener, app).into_future());
@@ -143,7 +145,9 @@ metrics_enabled = false
     let config: sorobangate::config::Config = toml::de::from_str(&toml).unwrap();
 
     let gateway_addr = rt.block_on(async {
-        let app = sorobangate::server::build_test_app(config, true).await.unwrap();
+        let app = sorobangate::server::build_test_app(config, true)
+            .await
+            .unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(axum::serve(listener, app).into_future());
@@ -162,7 +166,11 @@ metrics_enabled = false
         &(url, body),
         |b, (url, body)| {
             b.iter(|| {
-                client.post(url.as_str()).json(body).send().expect("request failed");
+                client
+                    .post(url.as_str())
+                    .json(body)
+                    .send()
+                    .expect("request failed");
             });
         },
     );

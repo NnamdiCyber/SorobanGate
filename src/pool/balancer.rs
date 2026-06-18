@@ -113,9 +113,7 @@ pub fn select(
     wrr_counter: &AtomicU64,
 ) -> Option<Arc<UpstreamState>> {
     match algorithm {
-        crate::config::LoadBalancingAlgorithm::Wrr => {
-            weighted_round_robin(healthy, wrr_counter)
-        }
+        crate::config::LoadBalancingAlgorithm::Wrr => weighted_round_robin(healthy, wrr_counter),
         crate::config::LoadBalancingAlgorithm::Lc => least_connections(healthy),
         crate::config::LoadBalancingAlgorithm::Random => random(healthy),
     }
@@ -198,14 +196,8 @@ mod tests {
         // With weights 3:1, expect ~300 heavy and ~100 light
         let heavy = *counts.get("heavy").unwrap();
         let light = *counts.get("light").unwrap();
-        assert!(
-            heavy > 200,
-            "heavy should be >200, got {heavy}"
-        );
-        assert!(
-            light > 50,
-            "light should be >50, got {light}"
-        );
+        assert!(heavy > 200, "heavy should be >200, got {heavy}");
+        assert!(light > 50, "light should be >50, got {light}");
         // Ratio check: heavy ≈ 3 × light
         let ratio = heavy as f64 / light as f64;
         assert!(
@@ -238,14 +230,8 @@ mod tests {
         let counter = AtomicU64::new(0);
 
         // Both effectively weight 1, cycle: a, b, a, b, ...
-        assert_eq!(
-            weighted_round_robin(&healthy, &counter).unwrap().url,
-            "a"
-        );
-        assert_eq!(
-            weighted_round_robin(&healthy, &counter).unwrap().url,
-            "b"
-        );
+        assert_eq!(weighted_round_robin(&healthy, &counter).unwrap().url, "a");
+        assert_eq!(weighted_round_robin(&healthy, &counter).unwrap().url, "b");
     }
 
     // ── LC tests ──

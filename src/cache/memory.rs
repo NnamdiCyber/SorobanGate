@@ -22,9 +22,7 @@ impl MemoryCache {
     pub fn new(max_memory_mb: u64) -> Self {
         let max_entries = (max_memory_mb * 1024 * 1024) / 1024;
         Self {
-            cache: MokaCache::builder()
-                .max_capacity(max_entries)
-                .build(),
+            cache: MokaCache::builder().max_capacity(max_entries).build(),
             hit_count: AtomicU64::new(0),
             miss_count: AtomicU64::new(0),
             eviction_count: AtomicU64::new(0),
@@ -200,13 +198,19 @@ mod tests {
     fn test_hash_to_u64_deterministic() {
         let key1 = b"hello-world";
         let key2 = b"hello-world";
-        assert_eq!(MemoryCache::hash_to_u64(key1), MemoryCache::hash_to_u64(key2));
+        assert_eq!(
+            MemoryCache::hash_to_u64(key1),
+            MemoryCache::hash_to_u64(key2)
+        );
     }
 
     #[test]
     fn test_hash_to_u64_different_keys() {
         let key1 = b"key-a";
         let key2 = b"key-b";
-        assert_ne!(MemoryCache::hash_to_u64(key1), MemoryCache::hash_to_u64(key2));
+        assert_ne!(
+            MemoryCache::hash_to_u64(key1),
+            MemoryCache::hash_to_u64(key2)
+        );
     }
 }

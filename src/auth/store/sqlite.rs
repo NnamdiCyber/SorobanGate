@@ -84,7 +84,12 @@ impl KeyStore for SqliteKeyStore {
         }
     }
 
-    fn create_key(&self, raw_key: &str, tier: &str, label: &str) -> Result<KeyEntry, anyhow::Error> {
+    fn create_key(
+        &self,
+        raw_key: &str,
+        tier: &str,
+        label: &str,
+    ) -> Result<KeyEntry, anyhow::Error> {
         let key_id = Self::sha256_id(raw_key);
         let key_hash = Self::hash_key(raw_key)?;
         let created_at = std::time::SystemTime::now()
@@ -186,8 +191,12 @@ mod tests {
     #[test]
     fn test_list_keys() {
         let store = setup_db();
-        store.create_key("sk_test_list_1", "tier1", "key 1").unwrap();
-        store.create_key("sk_test_list_2", "tier2", "key 2").unwrap();
+        store
+            .create_key("sk_test_list_1", "tier1", "key 1")
+            .unwrap();
+        store
+            .create_key("sk_test_list_2", "tier2", "key 2")
+            .unwrap();
 
         let keys = store.list_keys().unwrap();
         assert_eq!(keys.len(), 2);

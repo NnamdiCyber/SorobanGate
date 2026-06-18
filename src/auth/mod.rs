@@ -14,7 +14,8 @@ pub struct KeyEntry {
 
 pub trait KeyStore: Send + Sync {
     fn lookup(&self, raw_key: &str) -> Result<Option<KeyEntry>, anyhow::Error>;
-    fn create_key(&self, raw_key: &str, tier: &str, label: &str) -> Result<KeyEntry, anyhow::Error>;
+    fn create_key(&self, raw_key: &str, tier: &str, label: &str)
+        -> Result<KeyEntry, anyhow::Error>;
     fn revoke_key(&self, key_id: &str) -> Result<bool, anyhow::Error>;
     fn list_keys(&self) -> Result<Vec<KeyEntry>, anyhow::Error>;
 }
@@ -30,7 +31,12 @@ impl KeyStore for KeyStoreDispatch {
         }
     }
 
-    fn create_key(&self, raw_key: &str, tier: &str, label: &str) -> Result<KeyEntry, anyhow::Error> {
+    fn create_key(
+        &self,
+        raw_key: &str,
+        tier: &str,
+        label: &str,
+    ) -> Result<KeyEntry, anyhow::Error> {
         match self {
             KeyStoreDispatch::Sqlite(store) => store.create_key(raw_key, tier, label),
         }
@@ -91,9 +97,15 @@ mod tests {
     #[test]
     fn test_extract_bearer_token() {
         let mut headers = HeaderMap::new();
-        headers.insert("Authorization", HeaderValue::from_static("Bearer sk_test_abc123"));
+        headers.insert(
+            "Authorization",
+            HeaderValue::from_static("Bearer sk_test_abc123"),
+        );
         let uri = Uri::from_static("/");
-        assert_eq!(extract_api_key(&headers, &uri), Some("sk_test_abc123".to_string()));
+        assert_eq!(
+            extract_api_key(&headers, &uri),
+            Some("sk_test_abc123".to_string())
+        );
     }
 
     #[test]
@@ -101,23 +113,35 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("X-API-Key", HeaderValue::from_static("sk_test_xyz789"));
         let uri = Uri::from_static("/");
-        assert_eq!(extract_api_key(&headers, &uri), Some("sk_test_xyz789".to_string()));
+        assert_eq!(
+            extract_api_key(&headers, &uri),
+            Some("sk_test_xyz789".to_string())
+        );
     }
 
     #[test]
     fn test_extract_query_param() {
         let headers = HeaderMap::new();
         let uri = Uri::from_static("/?api_key=sk_test_query");
-        assert_eq!(extract_api_key(&headers, &uri), Some("sk_test_query".to_string()));
+        assert_eq!(
+            extract_api_key(&headers, &uri),
+            Some("sk_test_query".to_string())
+        );
     }
 
     #[test]
     fn test_bearer_takes_precedence() {
         let mut headers = HeaderMap::new();
-        headers.insert("Authorization", HeaderValue::from_static("Bearer sk_bearer"));
+        headers.insert(
+            "Authorization",
+            HeaderValue::from_static("Bearer sk_bearer"),
+        );
         headers.insert("X-API-Key", HeaderValue::from_static("sk_header"));
         let uri = Uri::from_static("/?api_key=sk_query");
-        assert_eq!(extract_api_key(&headers, &uri), Some("sk_bearer".to_string()));
+        assert_eq!(
+            extract_api_key(&headers, &uri),
+            Some("sk_bearer".to_string())
+        );
     }
 
     #[test]
@@ -138,7 +162,10 @@ mod tests {
     #[test]
     fn test_wrong_auth_scheme_ignored() {
         let mut headers = HeaderMap::new();
-        headers.insert("Authorization", HeaderValue::from_static("Basic dXNlcjpwYXNz"));
+        headers.insert(
+            "Authorization",
+            HeaderValue::from_static("Basic dXNlcjpwYXNz"),
+        );
         let uri = Uri::from_static("/");
         assert_eq!(extract_api_key(&headers, &uri), None);
     }

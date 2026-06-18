@@ -25,12 +25,8 @@ async fn test_cache_hit_does_not_re_query_upstream() {
         axum::serve(listener, app).await.ok();
     });
 
-    let gw_addr = common::start_gateway_with_config(
-        &format!("http://{}", mock_addr),
-        false,
-        true,
-    )
-    .await;
+    let gw_addr =
+        common::start_gateway_with_config(&format!("http://{}", mock_addr), false, true).await;
 
     let client = reqwest::Client::new();
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "getLatestLedger", "params": [] });
@@ -45,5 +41,9 @@ async fn test_cache_hit_does_not_re_query_upstream() {
     assert_eq!(r2.status(), 200);
 
     let hits = call_count.load(Ordering::Relaxed);
-    assert_eq!(hits, 1, "upstream should only be called once due to caching, got {}", hits);
+    assert_eq!(
+        hits, 1,
+        "upstream should only be called once due to caching, got {}",
+        hits
+    );
 }

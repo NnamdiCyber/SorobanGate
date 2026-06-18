@@ -1,8 +1,12 @@
-use sorobangate::config;
 use clap::Parser;
+use sorobangate::config;
 
 #[derive(Parser)]
-#[command(name = "sorobangate", version, about = "High-performance Soroban RPC gateway & load balancer")]
+#[command(
+    name = "sorobangate",
+    version,
+    about = "High-performance Soroban RPC gateway & load balancer"
+)]
 struct Cli {
     #[arg(short, long, default_value = "sorobangate.toml")]
     config: String,
