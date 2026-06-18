@@ -2,7 +2,7 @@
 
 <img src="https://img.shields.io/badge/Rust-1.78+-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust" />
 <img src="https://img.shields.io/badge/Soroban-RPC_Gateway-7B2FBE?style=for-the-badge&logo=stellar&logoColor=white" alt="Soroban" />
-<img src="https://img.shields.io/badge/License-Apache_2.0-0F6E56?style=for-the-badge" alt="Apache 2.0" />
+<img src="https://img.shields.io/badge/License-MIT-0F6E56?style=for-the-badge" alt="MIT" />
 <img src="https://img.shields.io/badge/PRs-Welcome-D85A30?style=for-the-badge" alt="PRs Welcome" />
 <img src="https://img.shields.io/badge/Open_Source-Community-534AB7?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="Open Source" />
 
@@ -1100,16 +1100,20 @@ We follow a 90-day responsible disclosure policy and will acknowledge receipt wi
 
 ## 📄 License
 
-SorobanGate is released under the **Apache License 2.0**. See [`LICENSE`](LICENSE) for the full text.
+SorobanGate is released under the **MIT License**. See [`LICENSE`](LICENSE) for the full text.
 
 ```
 Copyright 2026 SorobanGate Contributors
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-    http://www.apache.org/licenses/LICENSE-2.0
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 ```
 
 ---
