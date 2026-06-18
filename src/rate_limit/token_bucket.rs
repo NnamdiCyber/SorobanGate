@@ -17,6 +17,15 @@ impl TokenBucketRateLimiter {
             buckets: Mutex::new(HashMap::new()),
         }
     }
+}
+
+impl Default for TokenBucketRateLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TokenBucketRateLimiter {
 
     pub fn check_rate(&self, key: &str, requests_per_second: u32, burst: u32) -> Result<(), super::RateLimited> {
         let mut buckets = self.buckets.lock().unwrap();

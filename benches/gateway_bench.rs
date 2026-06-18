@@ -1,5 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
 use serde_json::json;
+use std::future::IntoFuture;
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 

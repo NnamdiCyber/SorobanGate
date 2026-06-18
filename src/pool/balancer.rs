@@ -177,7 +177,7 @@ mod tests {
         let u = healthy("a", 1);
         let counter = AtomicU64::new(0);
         for _ in 0..10 {
-            let selected = weighted_round_robin(&[u.clone()], &counter).unwrap();
+            let selected = weighted_round_robin(std::slice::from_ref(&u), &counter).unwrap();
             assert_eq!(selected.url, "a");
         }
     }
@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn test_lc_returns_single_upstream() {
         let u = healthy("only", 1);
-        let selected = least_connections(&[u.clone()]).unwrap();
+        let selected = least_connections(std::slice::from_ref(&u)).unwrap();
         assert_eq!(selected.url, "only");
     }
 
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_random_returns_from_available_set() {
-        let urls = vec!["x", "y", "z"];
+        let urls = ["x", "y", "z"];
         let upstreams: Vec<_> = urls.iter().map(|u| healthy(u, 1)).collect();
 
         for _ in 0..100 {
@@ -318,7 +318,7 @@ mod tests {
     fn test_trait_dispatch_wrr() {
         let u = healthy("a", 1);
         let balancer = WeightedRoundRobin::new();
-        let selected = balancer.select(&[u.clone()]).unwrap();
+        let selected = balancer.select(std::slice::from_ref(&u)).unwrap();
         assert_eq!(selected.url, "a");
     }
 
@@ -335,7 +335,7 @@ mod tests {
     fn test_trait_dispatch_random() {
         let u = healthy("a", 1);
         let balancer = Random;
-        let selected = balancer.select(&[u.clone()]).unwrap();
+        let selected = balancer.select(std::slice::from_ref(&u)).unwrap();
         assert_eq!(selected.url, "a");
     }
 
@@ -346,7 +346,7 @@ mod tests {
         let u = healthy("a", 1);
         let counter = AtomicU64::new(0);
         let selected = select(
-            &[u.clone()],
+            std::slice::from_ref(&u),
             &crate::config::LoadBalancingAlgorithm::Wrr,
             &counter,
         )
@@ -358,7 +358,7 @@ mod tests {
     fn test_select_dispatches_lc() {
         let u = healthy("a", 1);
         let selected = select(
-            &[u.clone()],
+            std::slice::from_ref(&u),
             &crate::config::LoadBalancingAlgorithm::Lc,
             &AtomicU64::new(0),
         )
@@ -370,7 +370,7 @@ mod tests {
     fn test_select_dispatches_random() {
         let u = healthy("a", 1);
         let selected = select(
-            &[u.clone()],
+            std::slice::from_ref(&u),
             &crate::config::LoadBalancingAlgorithm::Random,
             &AtomicU64::new(0),
         )

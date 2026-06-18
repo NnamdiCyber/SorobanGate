@@ -153,6 +153,12 @@ pub struct MetricsHandle {
     registry: Arc<Mutex<Registry>>,
 }
 
+impl Default for MetricsHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetricsHandle {
     pub fn new() -> Self {
         let (metrics, registry) = Metrics::new();

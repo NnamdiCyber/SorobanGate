@@ -5,6 +5,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
 /// Start a mock JSON-RPC server returning the given value for all requests.
+#[allow(dead_code)]
 pub async fn start_mock(response: serde_json::Value) -> (SocketAddr, oneshot::Sender<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -23,10 +24,12 @@ pub async fn start_mock(response: serde_json::Value) -> (SocketAddr, oneshot::Se
 }
 
 /// Build and serve a gateway on a free port, returning its address.
+#[allow(dead_code)]
 pub async fn start_gateway(upstream_url: &str) -> SocketAddr {
     start_gateway_with_config(upstream_url, false, false).await
 }
 
+#[allow(dead_code)]
 pub async fn start_gateway_with_config(
     upstream_url: &str,
     rate_limit: bool,

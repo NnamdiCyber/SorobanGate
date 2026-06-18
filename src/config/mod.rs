@@ -6,20 +6,15 @@ pub mod validate;
 
 // ── Enums ──
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     Trace,
     Debug,
+    #[default]
     Info,
     Warn,
     Error,
-}
-
-impl Default for LogLevel {
-    fn default() -> Self {
-        Self::Info
-    }
 }
 
 impl LogLevel {
@@ -34,85 +29,55 @@ impl LogLevel {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogFormat {
+    #[default]
     Json,
     Pretty,
 }
 
-impl Default for LogFormat {
-    fn default() -> Self {
-        Self::Json
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LoadBalancingAlgorithm {
+    #[default]
     Wrr,
     Lc,
     Random,
 }
 
-impl Default for LoadBalancingAlgorithm {
-    fn default() -> Self {
-        Self::Wrr
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RateLimitStore {
+    #[default]
     Memory,
     Redis,
 }
 
-impl Default for RateLimitStore {
-    fn default() -> Self {
-        Self::Memory
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum KeyStore {
+    #[default]
     Sqlite,
     Redis,
 }
 
-impl Default for KeyStore {
-    fn default() -> Self {
-        Self::Sqlite
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CacheBackend {
+    #[default]
     Memory,
     Redis,
 }
 
-impl Default for CacheBackend {
-    fn default() -> Self {
-        Self::Memory
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TlsVersion {
     #[serde(rename = "tls1.2")]
+    #[default]
     Tls12,
     #[serde(rename = "tls1.3")]
     Tls13,
-}
-
-impl Default for TlsVersion {
-    fn default() -> Self {
-        Self::Tls12
-    }
 }
 
 // ── Default value helpers ──
@@ -234,7 +199,7 @@ impl Default for ServerConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TlsConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -244,17 +209,6 @@ pub struct TlsConfig {
     pub key_file: String,
     #[serde(default)]
     pub min_version: TlsVersion,
-}
-
-impl Default for TlsConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            cert_file: String::new(),
-            key_file: String::new(),
-            min_version: TlsVersion::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
